@@ -42,7 +42,7 @@
 
     <aside class="controls">
         <div class="control-group control-buttons">
-            <button class="btn btn-primary" @onclick="FireOne">Fire one electron</button>
+            <button class="btn btn-primary" @onclick="FireOne">Fire one electron with wave animation</button>
             <button class="btn" @onclick="FireBurst">Fire @BurstCount</button>
             <button class="btn @(Runner.AutoFire ? "btn-active" : "")" @onclick="ToggleAutoFire">
                 @(Runner.AutoFire ? "Stop auto-fire" : "Start auto-fire")
@@ -89,6 +89,7 @@
                     <option value="1">1×</option>
                     <option value="2">2×</option>
                     <option value="4">4× (fast)</option>
+                    <option value="8">8× (fastest)</option>
                 </select>
                 <button class="btn" @onclick="Replay" disabled="@(Runner.IsAnimating || Runner.Observe)">Replay wave</button>
             </div>

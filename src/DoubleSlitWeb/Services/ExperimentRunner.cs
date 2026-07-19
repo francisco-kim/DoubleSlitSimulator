@@ -54,10 +54,10 @@ public sealed class ExperimentRunner
     public double WaveSpeed { get; set; } = 1.0;
 
     /// <summary>Show the dashed quantum-mechanical / classical prediction curve.</summary>
-    public bool ShowTheoryCurve { get; set; } = true;
+    public bool ShowTheoryCurve { get; set; }
 
     /// <summary>Show the solid measured-histogram curve of actual impacts.</summary>
-    public bool ShowMeasuredCurve { get; set; } = true;
+    public bool ShowMeasuredCurve { get; set; }
 
     /// <summary>Keep the time-averaged wave visible after a run completes.</summary>
     public bool PersistCloud { get; set; } = true;
