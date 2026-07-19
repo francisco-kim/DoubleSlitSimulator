@@ -155,7 +155,11 @@ function tickAnimations(now) {
       continue;   // staggered launch not due yet
     }
     if (t >= 1) {
-      stampDot(e, accent);
+      // Blocked electrons are absorbed at the wall: nothing is detected, so
+      // no screen dot and nothing counted.
+      if (!e.blocked) {
+        stampDot(e, accent);
+      }
       electrons.splice(i, 1);
       continue;
     }
@@ -201,6 +205,25 @@ function drawElectron(e, t, accent) {
     return;
   }
   const ctx = state.ctx;
+
+  if (e.blocked) {
+    // Straight line from gun height to the barrier only — absorbed there,
+    // rendered muted grey (not the accent blue used for detected electrons),
+    // fading out just before impact.
+    const x = e.gunX;
+    const y = e.gunY + (e.barrierY - e.gunY) * t;
+    const alpha = t < 0.75 ? 1 : Math.max(0, (1 - t) / 0.25);
+    const gradient = ctx.createRadialGradient(x, y, 0.5, x, y, 5);
+    gradient.addColorStop(0, 'rgba(140, 140, 140, 0.85)');
+    gradient.addColorStop(1, 'rgba(140, 140, 140, 0)');
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
 
   if (!e.showPath) {
     // No trajectory to draw — just a launch flash at the gun.

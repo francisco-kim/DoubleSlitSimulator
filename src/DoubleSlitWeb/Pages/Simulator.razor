@@ -50,7 +50,7 @@
         </div>
 
         <div class="control-group">
-            <label class="control-label">@BurstCount electrons — per burst, or per second on auto-fire</label>
+            <label class="control-label">@BurstCount electron@(BurstCount == 1 ? "" : "s") — per burst, or per second on auto-fire</label>
             <input type="range" min="1" max="50" step="1"
                    value="@Runner.FireRatePerSecond"
                    @oninput="@(e => Runner.FireRatePerSecond = double.Parse((string)e.Value!))" />
@@ -89,7 +89,6 @@
                     <option value="1">1×</option>
                     <option value="2">2×</option>
                     <option value="4">4× (fast)</option>
-                    <option value="8">8× (fastest)</option>
                 </select>
                 <button class="btn" @onclick="Replay" disabled="@(Runner.IsAnimating || Runner.Observe)">Replay wave</button>
             </div>
@@ -274,6 +273,17 @@
             }
         }
 
+        if (Runner.BlockedLaunchXs.Count > 0)
+        {
+            var stagger = Math.Min(50, 1500 / Runner.BlockedLaunchXs.Count);
+            for (var i = 0; i < Runner.BlockedLaunchXs.Count; i++)
+            {
+                LaunchBlockedAnimation(Runner.BlockedLaunchXs[i], delayMs: i * stagger);
+            }
+
+            Runner.BlockedLaunchXs.Clear();
+        }
+
         if (_uiRefresh.ElapsedMilliseconds > 150)
         {
             _uiRefresh.Restart();
@@ -363,8 +373,38 @@
             dotX = shot.ImpactX,
             showPath,
             ghost = imagined,
+            blocked = false,
             delay = delayMs,
             duration = showPath ? 700 : 550,
+        });
+        Interop.CanvasInterop.AnimateElectron(json);
+    }
+
+    /// <summary>
+    ///     Animates one of the wide source's spurious electrons that never
+    ///     reaches a slit: travels straight down from gun height and is
+    ///     absorbed at the barrier — no screen dot, nothing recorded.
+    /// </summary>
+    private void LaunchBlockedAnimation(double x, double delayMs)
+    {
+        var geometry = Runner.Geometry;
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            overlayId = "ds-flight",
+            dotsId = "ds-dots",
+            fxId = "ds-fx",
+            gunX = x,
+            gunY = geometry.PacketY,
+            slitX = x,
+            barrierY = geometry.BarrierY,
+            screenY = geometry.ScreenY,
+            impactX = x,
+            dotX = x,
+            showPath = true,
+            ghost = false,
+            blocked = true,
+            delay = delayMs,
+            duration = 350,
         });
         Interop.CanvasInterop.AnimateElectron(json);
     }

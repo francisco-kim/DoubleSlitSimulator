@@ -31,6 +31,15 @@ public sealed class ExperimentRunner
     /// <summary>Blur (px) of the classical stripes in observed mode.</summary>
     private const double ClassicalBlurSigma = 2.0;
 
+    /// <summary>
+    ///     Spurious (undetected) companions drawn per real observed shot, to show
+    ///     that a wide source mostly hits the solid wall — only a narrow sliver
+    ///     of it lines up with either slit. Not the true ~9:1 physical ratio
+    ///     (the gun's width is much larger than the apertures), which would
+    ///     clutter the animation; enough to make the point visually.
+    /// </summary>
+    private const int BlockedElectronsPerShot = 3;
+
     private readonly Random _rng = new();
 
     private DoubleSlitExperiment _experiment;
@@ -99,6 +108,14 @@ public sealed class ExperimentRunner
 
     /// <summary>Shots fired this frame; the page consumes and animates them.</summary>
     public List<ElectronShot> ShotsToAnimate { get; } = new();
+
+    /// <summary>
+    ///     Spurious observed-mode electrons fired this frame that never reach a
+    ///     slit — sampled across the gun's whole width and absorbed at the
+    ///     barrier. Purely illustrative: they are not counted in
+    ///     <see cref="DotCount" /> or the histogram, since nothing was detected.
+    /// </summary>
+    public List<double> BlockedLaunchXs { get; } = new();
 
     /// <summary>Expected P(x) for the current mode; null if not known yet.</summary>
     public double[]? TheoryCurve() =>
@@ -219,6 +236,7 @@ public sealed class ExperimentRunner
         RightSlitCount = 0;
         Array.Clear(Histogram);
         ShotsToAnimate.Clear();
+        BlockedLaunchXs.Clear();
     }
 
     /// <summary>
@@ -334,6 +352,34 @@ public sealed class ExperimentRunner
         // Observed shots always launch from their own impact column (see
         // Simulator.razor), so the spread-launch flag is unused here.
         RecordShot(Math.Clamp(x, 0.0, Geometry.Width - 1.0), mode, spreadLaunch: false);
+
+        // Most of the wide source actually hits the solid wall, not a slit —
+        // show a few of those undetected electrons too, sampled across the
+        // gun's real width.
+        for (var i = 0; i < BlockedElectronsPerShot; i++)
+        {
+            var blockedX = PushOutsideSlits(Geometry.PacketX + SampleStandardNormal() * Geometry.SigmaX);
+            BlockedLaunchXs.Add(Math.Clamp(blockedX, 0.0, Geometry.Width - 1.0));
+        }
+    }
+
+    /// <summary>
+    ///     Nudges a sampled position just clear of either slit aperture, so a
+    ///     "blocked" electron never visually threads the gap it was meant to miss.
+    /// </summary>
+    private double PushOutsideSlits(double x)
+    {
+        var margin = Geometry.SlitWidth / 2.0 + 2.0;
+        foreach (var centre in new double[] { Geometry.LeftSlitCentre, Geometry.RightSlitCentre })
+        {
+            if (Math.Abs(x - centre) < margin)
+            {
+                var offset = x - centre;
+                return centre + (offset == 0 ? 1.0 : Math.Sign(offset)) * margin;
+            }
+        }
+
+        return x;
     }
 
     private void RecordShot(double x, SlitMode mode, bool spreadLaunch)
