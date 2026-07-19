@@ -1,0 +1,438 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ExperimentRunner Runner
+@inject WaveRenderer Renderer
+
+<PageTitle>Double-slit experiment simulator</PageTitle>
+
+<div class="sim-layout">
+    <div class="ds-tiles">
+        <section class="lattice-panel">
+            <div class="panel-caption">Top view — the electron wave travelling from gun to screen</div>
+            <div class="canvas-stack ds-topview">
+                <canvas id="ds-scene" class="ds-canvas"></canvas>
+                <canvas id="ds-wave" class="ds-canvas ds-canvas-layer"></canvas>
+                <canvas id="ds-flight" class="ds-canvas ds-canvas-layer"></canvas>
+            </div>
+        </section>
+
+        <section class="lattice-panel">
+            <div class="panel-caption">Detection screen — seen from the front, one dot per electron</div>
+            <div class="canvas-stack ds-screenview">
+                <canvas id="ds-dots" class="ds-canvas"></canvas>
+                <canvas id="ds-fx" class="ds-canvas ds-canvas-layer"></canvas>
+                <canvas id="ds-curve" class="ds-canvas ds-canvas-layer"></canvas>
+            </div>
+            <div class="readout-row">
+                <div class="readout"><span class="readout-label">electrons detected</span><span class="readout-value">@Runner.DotCount</span></div>
+                @if (Runner.Observe || Runner.LeftSlitCount + Runner.RightSlitCount > 0)
+                {
+                    <div class="readout"><span class="readout-label">seen at left slit</span><span class="readout-value">@Runner.LeftSlitCount</span></div>
+                    <div class="readout"><span class="readout-label">seen at right slit</span><span class="readout-value">@Runner.RightSlitCount</span></div>
+                }
+                @if (Runner.IsAnimating)
+                {
+                    <div class="readout"><span class="readout-label">wave</span><span class="readout-value">propagating…</span></div>
+                }
+            </div>
+        </section>
+    </div>
+
+    <aside class="controls">
+        <div class="control-group control-buttons">
+            <button class="btn btn-primary" @onclick="FireOne">Fire one electron</button>
+        </div>
+
+        <div class="control-group">
+            <label class="check-label">
+                <input type="checkbox" checked="@Runner.AutoFire" @onchange="OnAutoFireChanged" />
+                auto-fire
+            </label>
+            <label class="control-label">Rate: @Runner.FireRatePerSecond.ToString("0") electrons/s</label>
+            <input type="range" min="1" max="50" step="1"
+                   value="@Runner.FireRatePerSecond"
+                   @oninput="@(e => Runner.FireRatePerSecond = double.Parse((string)e.Value!))" />
+            <div class="slider-scale"><span>1/s — one at a time</span><span>50/s</span></div>
+        </div>
+
+        <div class="control-group ds-observe">
+            <label class="check-label ds-observe-label">
+                <input type="checkbox" checked="@Runner.Observe" @onchange="OnObserveChanged" />
+                <strong>Observe which slit it goes through</strong>
+            </label>
+            <div class="control-hint">
+                Places a detector at the slits. Each electron is then seen at one
+                slit — watch what that does to the pattern.
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Slit separation: @_slitSeparation px</label>
+            <input type="range" min="24" max="96" step="4"
+                   value="@_slitSeparation"
+                   @onchange="OnSlitSeparationChanged" />
+            <label class="control-label">Slit width: @_slitWidth px</label>
+            <input type="range" min="4" max="16" step="2"
+                   value="@_slitWidth"
+                   @onchange="OnSlitWidthChanged" />
+            <div class="control-hint">Changing the slits re-runs the wave.</div>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Wave animation speed</label>
+            <div class="inline-controls">
+                <select value="@Runner.WaveSpeed" @onchange="@(e => Runner.WaveSpeed = double.Parse((string)e.Value!, System.Globalization.CultureInfo.InvariantCulture))">
+                    <option value="0.5">0.5× (slow)</option>
+                    <option value="1">1×</option>
+                    <option value="2">2×</option>
+                    <option value="4">4× (fast)</option>
+                </select>
+                <button class="btn" @onclick="Replay" disabled="@Runner.IsAnimating">Replay wave</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label class="check-label">
+                <input type="checkbox" checked="@Runner.ShowCurve" @onchange="OnShowCurveChanged" />
+                show intensity curves
+            </label>
+            <div class="control-hint">
+                Dashed: where quantum mechanics predicts electrons should land.
+                Solid: where yours actually landed.
+            </div>
+        </div>
+
+        <div class="control-group control-buttons">
+            <button class="btn" @onclick="ResetScreenAsync">Reset screen</button>
+            <button class="btn" @onclick="ExportPng">Export PNG</button>
+        </div>
+    </aside>
+</div>
+
+<section class="explainer">
+    <h2>What is this?</h2>
+    <p>
+        This is the <strong>double-slit experiment</strong>, often called the most beautiful experiment in
+        physics. An electron gun (top) fires electrons, <em>one at a time</em>, at a wall with two narrow
+        slits. Electrons that make it through are recorded as dots on a detection screen (bottom tile).
+        Common sense says an electron is a tiny ball: it should go through the left slit or the right one,
+        and the screen should show two piles of dots, one behind each slit.
+    </p>
+    <p>
+        That is not what happens. The top view shows what quantum mechanics says actually travels through
+        the apparatus: not a little ball with a definite path, but a <strong>wave of possibility</strong>
+        (rendered here by really solving the Schrödinger equation — this is not a cartoon). The wave passes
+        through <em>both slits at once</em>, and the two emerging ripples overlap. Where crests meet crests
+        they reinforce; where crests meet troughs they cancel. Yet each electron still arrives as a
+        <em>single dot</em> — fire many, and the dots build up <strong>stripes</strong>: an interference
+        pattern, with the stripe spacing
+        <span data-katex="\Delta x \approx \lambda L / d"></span> set by the wavelength
+        <span data-katex="\lambda"></span>, the wall-to-screen distance <span data-katex="L"></span> and the
+        slit separation <span data-katex="d"></span>. Try the sliders: closer slits, wider stripes.
+    </p>
+    <p>
+        Here is the truly strange part. Tick <strong>“Observe which slit it goes through”</strong> to place
+        a detector at the slits, so that each electron is caught in the act of passing left or right. Each
+        one is indeed seen at exactly one slit — but the stripes <em>vanish</em>. The dots now pile up in
+        two plain heaps, one behind each slit, exactly as if the electrons had been tiny balls all along.
+        Untick it, and the stripes return. The act of looking changes the outcome: an electron behaves like
+        a wave exploring both slits only so long as nothing in the universe records which slit it took.
+    </p>
+    <p>
+        This is not a limitation of our instruments — it is how nature works. The pattern on the screen
+        tells you whether which-path information <em>exists</em>, not whether anyone happens to be watching.
+        Richard Feynman called this the “only mystery” of quantum mechanics: every stranger-than-fiction
+        quantum effect — from atomic clocks to quantum computers — traces back to what you can see happening
+        on this screen.
+    </p>
+</section>
+
+@code {
+    private const double FrameBudgetMilliseconds = 10.0;
+    private const int TopViewHeight = 256;
+    private const int ScreenViewHeight = 140;
+
+    private readonly System.Diagnostics.Stopwatch _uiRefresh = System.Diagnostics.Stopwatch.StartNew();
+    private readonly System.Diagnostics.Stopwatch _frameClock = System.Diagnostics.Stopwatch.StartNew();
+    private readonly System.Diagnostics.Stopwatch _curveRefresh = System.Diagnostics.Stopwatch.StartNew();
+    private readonly Random _rng = new();
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Simulator>? _selfReference;
+    private bool _interopReady;
+    private bool _wasAnimating;
+    private int _slitWidth = 8;
+    private int _slitSeparation = 48;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await Interop.CanvasInterop.EnsureModuleLoadedAsync();
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/doubleSlitCanvas.js");
+        _selfReference = DotNetObjectReference.Create(this);
+        _interopReady = true;
+
+        var width = Runner.Geometry.Width;
+        Interop.CanvasInterop.InitCanvas("ds-scene", width, TopViewHeight);
+        Interop.CanvasInterop.InitCanvas("ds-wave", width, TopViewHeight);
+        Interop.CanvasInterop.InitCanvas("ds-flight", width, TopViewHeight);
+        Interop.CanvasInterop.InitCanvas("ds-dots", width, ScreenViewHeight);
+        Interop.CanvasInterop.InitCanvas("ds-fx", width, ScreenViewHeight);
+        Interop.CanvasInterop.InitCanvas("ds-curve", width, ScreenViewHeight);
+        Renderer.Configure(width, TopViewHeight);
+
+        // ?observe and ?autofire preset the controls (deep links, demos, tests).
+        if (Navigation.Uri.Contains("observe", StringComparison.OrdinalIgnoreCase))
+        {
+            Runner.Observe = true;
+        }
+
+        if (Navigation.Uri.Contains("autofire", StringComparison.OrdinalIgnoreCase))
+        {
+            Runner.AutoFire = true;
+            Runner.Fire();
+        }
+
+        DrawScene();
+        await JS.InvokeVoidAsync("renderKatex");
+
+        // The loop always runs: it drives wave animation and auto-fire timing.
+        await _module.InvokeVoidAsync("startLoop", _selfReference);
+    }
+
+    [JSInvokable]
+    public Task OnAnimationFrame()
+    {
+        var deltaSeconds = _frameClock.Elapsed.TotalSeconds;
+        _frameClock.Restart();
+
+        Runner.Tick(FrameBudgetMilliseconds, deltaSeconds);
+
+        if (Runner.IsAnimating && !_wasAnimating)
+        {
+            Renderer.StartRun();
+        }
+        else if (_wasAnimating && !Runner.IsAnimating)
+        {
+            // A wave run just completed: its theory curve is now available.
+            UpdateCurves();
+        }
+        _wasAnimating = Runner.IsAnimating;
+
+        if (Runner.WaveDirty)
+        {
+            Runner.WaveDirty = false;
+            RenderWave();
+        }
+
+        if (Runner.ShotsToAnimate.Count > 0)
+        {
+            foreach (var shot in Runner.ShotsToAnimate)
+            {
+                LaunchShotAnimation(shot);
+            }
+
+            Runner.ShotsToAnimate.Clear();
+            if (_curveRefresh.ElapsedMilliseconds > 200)
+            {
+                _curveRefresh.Restart();
+                UpdateCurves();
+            }
+        }
+
+        if (_uiRefresh.ElapsedMilliseconds > 150)
+        {
+            _uiRefresh.Restart();
+            StateHasChanged();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void RenderWave()
+    {
+        if (!_interopReady)
+        {
+            return;
+        }
+
+        if (Runner.IsAnimating)
+        {
+            Renderer.RenderLive(Runner.Psi);
+            Interop.CanvasInterop.RenderFrame("ds-wave", Renderer.Buffer);
+        }
+        else if (Runner.HasCloud)
+        {
+            Renderer.RenderCloud(Runner.Cloud);
+            Interop.CanvasInterop.RenderFrame("ds-wave", Renderer.Buffer);
+        }
+        else
+        {
+            Interop.CanvasInterop.ClearCanvas("ds-wave");
+        }
+    }
+
+    private void LaunchShotAnimation(ElectronShot shot)
+    {
+        var geometry = Runner.Geometry;
+        var slitX = shot.Slit switch
+        {
+            DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
+            DoubleSlitPhysics.Models.SlitMode.RightOnly => geometry.RightSlitCentre,
+            _ => geometry.PacketX,
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            overlayId = "ds-flight",
+            dotsId = "ds-dots",
+            fxId = "ds-fx",
+            gunX = geometry.PacketX,
+            gunY = geometry.PacketY,
+            slitX,
+            barrierY = geometry.BarrierY,
+            screenY = geometry.ScreenY,
+            impactX = shot.ImpactX,
+            dotX = shot.ImpactX,
+            dotY = 8 + _rng.NextDouble() * (ScreenViewHeight - 16),
+            observed = shot.Observed,
+            duration = shot.Observed ? 700 : 550,
+        });
+        Interop.CanvasInterop.AnimateElectron(json);
+    }
+
+    private void UpdateCurves()
+    {
+        if (!_interopReady)
+        {
+            return;
+        }
+
+        var theory = Runner.TheoryCurve() ?? Array.Empty<double>();
+        var showTheory = Runner.ShowCurve && theory.Length > 0;
+        var showHistogram = Runner.ShowCurve && Runner.DotCount > 0;
+
+        // 4-px bins keep the measured curve readable at low electron counts.
+        const int binWidth = 4;
+        var histogram = Runner.Histogram;
+        var binned = new double[histogram.Length / binWidth];
+        for (var i = 0; i < histogram.Length; i++)
+        {
+            binned[Math.Min(i / binWidth, binned.Length - 1)] += histogram[i];
+        }
+
+        Interop.CanvasInterop.DrawCurves(
+            "ds-curve",
+            theory.Length > 0 ? theory : new double[1],
+            binned,
+            showTheory,
+            showHistogram);
+    }
+
+    private void DrawScene()
+    {
+        if (!_interopReady)
+        {
+            return;
+        }
+
+        var geometry = Runner.Geometry;
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            gunX = geometry.PacketX,
+            gunY = geometry.PacketY,
+            barrierY = geometry.BarrierY,
+            barrierThickness = geometry.BarrierThickness,
+            slitWidth = geometry.SlitWidth,
+            leftSlitCentre = geometry.LeftSlitCentre,
+            rightSlitCentre = geometry.RightSlitCentre,
+            screenY = geometry.ScreenY,
+            observed = Runner.Observe,
+        });
+        Interop.CanvasInterop.DrawScene("ds-scene", json);
+    }
+
+    private void FireOne() => Runner.Fire();
+
+    private void Replay() => Runner.Replay();
+
+    private void OnAutoFireChanged(ChangeEventArgs e) => Runner.AutoFire = (bool)e.Value!;
+
+    private void OnObserveChanged(ChangeEventArgs e)
+    {
+        Runner.Observe = (bool)e.Value!;
+        DrawScene();
+        UpdateCurves();
+    }
+
+    private void OnShowCurveChanged(ChangeEventArgs e)
+    {
+        Runner.ShowCurve = (bool)e.Value!;
+        UpdateCurves();
+    }
+
+    private void OnSlitSeparationChanged(ChangeEventArgs e)
+    {
+        _slitSeparation = int.Parse((string)e.Value!);
+        ApplySlitChange();
+    }
+
+    private void OnSlitWidthChanged(ChangeEventArgs e)
+    {
+        _slitWidth = int.Parse((string)e.Value!);
+        ApplySlitChange();
+    }
+
+    private void ApplySlitChange()
+    {
+        Runner.ConfigureSlits(_slitWidth, _slitSeparation);
+        DrawScene();
+        UpdateCurves();
+    }
+
+    private async Task ResetScreenAsync()
+    {
+        Runner.ResetScreen();
+        if (_interopReady)
+        {
+            Interop.CanvasInterop.ClearDots("ds-dots", "ds-fx");
+            UpdateCurves();
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private void ExportPng()
+    {
+        if (_interopReady)
+        {
+            Interop.CanvasInterop.DownloadCanvasPng(
+                "ds-dots", $"double-slit-{(Runner.Observe ? "observed" : "interference")}-{Runner.DotCount}e.png");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Runner.AutoFire = false;
+
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("stopLoop");
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        _selfReference?.Dispose();
+    }
+}

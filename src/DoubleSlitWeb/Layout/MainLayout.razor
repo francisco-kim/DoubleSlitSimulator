@@ -1,0 +1,25 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <header class="app-header">
+        <div class="app-title">
+            <span class="app-mark"></span>
+            <span>Double-slit experiment</span>
+            <a class="app-byline" href="https://francisco-kim.github.io"
+               target="_blank" rel="noopener">by Francisco Kim</a>
+        </div>
+        <nav class="app-nav">
+            <NavLink href="" Match="NavLinkMatch.All">Simulator</NavLink>
+        </nav>
+    </header>
+
+    <main class="app-main">
+        @Body
+    </main>
+
+    <footer class="app-footer">
+        One electron at a time through two slits — a real Schrödinger-equation
+        simulation running entirely in your browser (.NET WebAssembly).
+        <a href="https://github.com/francisco-kim/DoubleSlitSimulator" target="_blank" rel="noopener">Source</a>
+    </footer>
+</div>

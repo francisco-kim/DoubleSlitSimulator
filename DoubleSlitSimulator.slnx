@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DoubleSlitPhysics/DoubleSlitPhysics.csproj" />
+    <Project Path="src/DoubleSlitWeb/DoubleSlitWeb.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DoubleSlitPhysics.Tests/DoubleSlitPhysics.Tests.csproj" />
+  </Folder>
+</Solution>
