@@ -32,13 +32,23 @@ public sealed class ExperimentRunner
     private const double ClassicalBlurSigma = 2.0;
 
     /// <summary>
-    ///     Spurious (undetected) companions drawn per real observed shot, to show
-    ///     that a wide source mostly hits the solid wall — only a narrow sliver
-    ///     of it lines up with either slit. Not the true ~9:1 physical ratio
-    ///     (the gun's width is much larger than the apertures), which would
-    ///     clutter the animation; enough to make the point visually.
+    ///     Expected spurious (undetected) companions drawn per real observed
+    ///     shot, to show that a wide source mostly hits the solid wall — only a
+    ///     narrow sliver of it lines up with either slit. Not the true ~9:1
+    ///     physical ratio (the gun's width is much larger than the apertures),
+    ///     which would clutter the animation; tapered as the firing rate grows
+    ///     so a 50-electron burst doesn't dump hundreds of grey dots at once —
+    ///     but never all the way to zero, so the wall is still visibly taking
+    ///     hits even at the fastest auto-fire rate. Fractional values are
+    ///     resolved probabilistically in <see cref="EmitObserved" />.
     /// </summary>
-    private const int BlockedElectronsPerShot = 3;
+    private static double ExpectedBlockedElectronsFor(int batchSize) => batchSize switch
+    {
+        <= 1 => 3.0,
+        <= 5 => 2.0,
+        <= 15 => 1.0,
+        _ => 0.3,
+    };
 
     private readonly Random _rng = new();
 
@@ -151,9 +161,14 @@ public sealed class ExperimentRunner
     {
         if (Observe)
         {
+            // Auto-fire calls this with count=1 on every tick (so the rate
+            // isn't throttled), which would otherwise always look like a lone
+            // solo shot; use the configured rate instead so scaling reflects
+            // how busy the screen actually gets.
+            var effectiveBatch = AutoFire ? Math.Max(count, (int)FireRatePerSecond) : count;
             for (var i = 0; i < count; i++)
             {
-                EmitObserved();
+                EmitObserved(effectiveBatch);
             }
 
             return;
@@ -183,7 +198,7 @@ public sealed class ExperimentRunner
     {
         if (Observe)
         {
-            EmitObserved();
+            EmitObserved(batchSize: 1);
             return;
         }
 
@@ -337,7 +352,7 @@ public sealed class ExperimentRunner
     private void EmitInterference(bool spreadLaunch) =>
         RecordShot(_both!.Sample(_rng), SlitMode.Both, spreadLaunch);
 
-    private void EmitObserved()
+    private void EmitObserved(int batchSize)
     {
         var mode = _rng.Next(2) == 0 ? SlitMode.LeftOnly : SlitMode.RightOnly;
         var centre = mode is SlitMode.LeftOnly ? Geometry.LeftSlitCentre : Geometry.RightSlitCentre;
@@ -355,8 +370,17 @@ public sealed class ExperimentRunner
 
         // Most of the wide source actually hits the solid wall, not a slit —
         // show a few of those undetected electrons too, sampled across the
-        // gun's real width.
-        for (var i = 0; i < BlockedElectronsPerShot; i++)
+        // gun's real width. Below one expected companion, resolve the
+        // fraction as a probability so blocked electrons still appear now and
+        // then instead of vanishing entirely at high firing rates.
+        var expectedBlocked = ExpectedBlockedElectronsFor(batchSize);
+        var blockedCount = (int)expectedBlocked;
+        if (_rng.NextDouble() < expectedBlocked - blockedCount)
+        {
+            blockedCount++;
+        }
+
+        for (var i = 0; i < blockedCount; i++)
         {
             var blockedX = PushOutsideSlits(Geometry.PacketX + SampleStandardNormal() * Geometry.SigmaX);
             BlockedLaunchXs.Add(Math.Clamp(blockedX, 0.0, Geometry.Width - 1.0));
