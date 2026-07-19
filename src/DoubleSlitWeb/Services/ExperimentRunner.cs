@@ -20,12 +20,18 @@ public sealed class ExperimentRunner
 {
     private readonly Random _rng = new();
 
+    // Observed shots should land without forcing the wave animation, so the
+    // one-slit distributions are precomputed headless during idle frames.
+    private const int MaxQueuedObservedShots = 10;
+
     private DoubleSlitExperiment _experiment;
+    private DoubleSlitExperiment? _background;
     private CachedDistribution? _both;
     private CachedDistribution? _left;
     private CachedDistribution? _right;
     private double _fireAccumulator;
     private bool _shotPendingAfterAnimation;
+    private int _queuedObservedShots;
 
     public ExperimentRunner()
     {
@@ -49,6 +55,9 @@ public sealed class ExperimentRunner
     public double WaveSpeed { get; set; } = 1.0;
 
     public bool ShowCurve { get; set; } = true;
+
+    /// <summary>Keep the time-averaged wave visible after a run completes.</summary>
+    public bool PersistCloud { get; set; } = true;
 
     public bool IsAnimating { get; private set; }
 
@@ -106,9 +115,11 @@ public sealed class ExperimentRunner
     {
         Geometry = Geometry with { SlitWidth = slitWidth, SlitSeparation = slitSeparation };
         _experiment = new DoubleSlitExperiment(Geometry, SlitMode.Both);
+        _background = null;
         _both = _left = _right = null;
         IsAnimating = false;
         _shotPendingAfterAnimation = false;
+        _queuedObservedShots = 0;
         HasCloud = false;
         Array.Clear(Cloud);
         WaveDirty = true;
@@ -121,19 +132,40 @@ public sealed class ExperimentRunner
     /// </summary>
     public void Fire()
     {
-        var mode = ChooseMode();
-        var distribution = DistributionFor(mode);
-        if (distribution is null)
+        if (Observe)
         {
-            StartAnimation(mode, shotPending: true);
+            // Never animate for an observed shot: sample from the precomputed
+            // one-slit distributions, queueing until they are ready.
+            var mode = ChooseMode();
+            var distribution = DistributionFor(mode);
+            if (distribution is null)
+            {
+                _queuedObservedShots = Math.Min(_queuedObservedShots + 1, MaxQueuedObservedShots);
+                return;
+            }
+
+            Emit(mode, distribution);
             return;
         }
 
-        Emit(mode, distribution);
+        if (_both is null)
+        {
+            StartAnimation(SlitMode.Both, shotPending: true);
+            return;
+        }
+
+        Emit(SlitMode.Both, _both);
     }
 
     /// <summary>Replays the wave animation for the current mode (no impact).</summary>
     public void Replay() => StartAnimation(ChooseMode(), shotPending: false);
+
+    /// <summary>Hides the persisted wave cloud (used when persistence is turned off).</summary>
+    public void ClearCloudDisplay()
+    {
+        HasCloud = false;
+        WaveDirty = true;
+    }
 
     public void ResetScreen()
     {
@@ -157,6 +189,8 @@ public sealed class ExperimentRunner
             return;
         }
 
+        TickBackground(budgetMilliseconds);
+
         if (!AutoFire)
         {
             _fireAccumulator = 0.0;
@@ -174,6 +208,59 @@ public sealed class ExperimentRunner
                 _fireAccumulator = 0.0;
                 break;
             }
+        }
+    }
+
+    /// <summary>
+    ///     Idle-frame work: computes the one-slit screen distributions headless
+    ///     (no wave display) so observed shots never wait for an animation, and
+    ///     releases any shots queued while they were being computed.
+    /// </summary>
+    private void TickBackground(double budgetMilliseconds)
+    {
+        if (_left is null || _right is null)
+        {
+            var mode = _left is null ? SlitMode.LeftOnly : SlitMode.RightOnly;
+            if (_background is null || _background.Mode != mode)
+            {
+                _background = new DoubleSlitExperiment(Geometry, mode);
+                _background.Reset(mode);
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            while (_background.Step())
+            {
+                if (stopwatch.Elapsed.TotalMilliseconds > budgetMilliseconds)
+                {
+                    return;
+                }
+            }
+
+            var cached = new CachedDistribution(_background.Screen.Distribution());
+            if (mode is SlitMode.LeftOnly)
+            {
+                _left = cached;
+            }
+            else
+            {
+                _right = cached;
+            }
+
+            _background = null;
+            return;
+        }
+
+        if (!Observe)
+        {
+            _queuedObservedShots = 0;
+            return;
+        }
+
+        while (_queuedObservedShots > 0)
+        {
+            _queuedObservedShots--;
+            var mode = ChooseMode();
+            Emit(mode, DistributionFor(mode)!);
         }
     }
 
@@ -216,7 +303,7 @@ public sealed class ExperimentRunner
         }
 
         IsAnimating = false;
-        HasCloud = true;
+        HasCloud = PersistCloud;
 
         if (_shotPendingAfterAnimation)
         {

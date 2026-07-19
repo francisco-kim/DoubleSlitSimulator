@@ -19,7 +19,7 @@
         </section>
 
         <section class="lattice-panel">
-            <div class="panel-caption">Detection screen — seen from the front, one dot per electron</div>
+            <div class="panel-caption">Detection screen — seen from the front, one stripe per electron</div>
             <div class="canvas-stack ds-screenview">
                 <canvas id="ds-dots" class="ds-canvas"></canvas>
                 <canvas id="ds-fx" class="ds-canvas ds-canvas-layer"></canvas>
@@ -91,6 +91,10 @@
                 </select>
                 <button class="btn" @onclick="Replay" disabled="@Runner.IsAnimating">Replay wave</button>
             </div>
+            <label class="check-label">
+                <input type="checkbox" checked="@Runner.PersistCloud" @onchange="OnPersistCloudChanged" />
+                keep wave visible after each run
+            </label>
         </div>
 
         <div class="control-group">
@@ -300,7 +304,6 @@
             screenY = geometry.ScreenY,
             impactX = shot.ImpactX,
             dotX = shot.ImpactX,
-            dotY = 8 + _rng.NextDouble() * (ScreenViewHeight - 16),
             observed = shot.Observed,
             duration = shot.Observed ? 700 : 550,
         });
@@ -369,6 +372,15 @@
         Runner.Observe = (bool)e.Value!;
         DrawScene();
         UpdateCurves();
+    }
+
+    private void OnPersistCloudChanged(ChangeEventArgs e)
+    {
+        Runner.PersistCloud = (bool)e.Value!;
+        if (!Runner.PersistCloud && !Runner.IsAnimating)
+        {
+            Runner.ClearCloudDisplay();
+        }
     }
 
     private void OnShowCurveChanged(ChangeEventArgs e)

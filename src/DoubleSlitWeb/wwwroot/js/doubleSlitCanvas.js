@@ -172,13 +172,11 @@ function tickAnimations(now) {
     }
     const state = canvases.get(f.fxId);
     if (state) {
+      // Freshly landed stripe lights up briefly, then fades.
       const ctx = state.ctx;
-      ctx.strokeStyle = accent;
-      ctx.globalAlpha = 1 - t;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, 2 + 10 * t, 0, 2 * Math.PI);
-      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.8 * (1 - t);
+      ctx.fillRect(f.x - 1.25, 0, 2.5, ctx.canvas.height);
       ctx.globalAlpha = 1;
     }
   }
@@ -243,15 +241,15 @@ function stampDot(e, accent) {
   if (!state) {
     return;
   }
+  // Each electron leaves a faint full-height stripe; stripes accumulate into
+  // the interference pattern.
   const ctx = state.ctx;
   ctx.fillStyle = accent;
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.arc(e.dotX, e.dotY, 1.8, 0, 2 * Math.PI);
-  ctx.fill();
+  ctx.globalAlpha = 0.22;
+  ctx.fillRect(e.dotX - 0.75, 0, 1.5, ctx.canvas.height);
   ctx.globalAlpha = 1;
 
-  flashes.push({ fxId: e.fxId, x: e.dotX, y: e.dotY, start: performance.now() });
+  flashes.push({ fxId: e.fxId, x: e.dotX, start: performance.now() });
   ensureAnimator();
 }
 
