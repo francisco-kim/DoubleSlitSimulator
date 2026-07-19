@@ -332,7 +332,15 @@
         }
         else
         {
-            launchX = geometry.PacketX;
+            // Burst/auto-fire shots launch from a random point across the
+            // gun's actual width (it's a wide source, not a pinpoint emitter —
+            // see the "point source" discussion) instead of dead centre, so
+            // rapid-fire electrons don't all visually stack on one pixel. The
+            // single "fire one electron" button keeps the centred launch that
+            // matches the real wave it just displayed.
+            launchX = shot.SpreadLaunch
+                ? Math.Clamp(geometry.PacketX + SampleStandardNormal() * geometry.SigmaX, 24, geometry.Width - 24)
+                : geometry.PacketX;
             slitX = shot.Slit switch
             {
                 DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
@@ -410,6 +418,14 @@
             observed = Runner.Observe,
         });
         Interop.CanvasInterop.DrawScene("ds-scene", json);
+    }
+
+    private double SampleStandardNormal()
+    {
+        // Box–Muller.
+        var u = 1.0 - _rng.NextDouble();
+        var v = _rng.NextDouble();
+        return Math.Sqrt(-2.0 * Math.Log(u)) * Math.Cos(2.0 * Math.PI * v);
     }
 
     private int BurstCount => (int)Runner.FireRatePerSecond;
