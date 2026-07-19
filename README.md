@@ -90,6 +90,28 @@ $$
   of wrapping around (a discrete Fourier transform is implicitly periodic;
   without this, the packet re-enters from the opposite edge).
 
+**Why a mask instead of a potential term.** The split-step method needs both
+propagator factors to be unitary and numerically well-behaved: the kinetic
+factor above, and $e^{-iV\Delta t/2}$ for a potential $V$. Both the wall and
+the absorbers are awkward to express that way:
+
+- The slit wall is an infinite barrier. $V=\infty$ has no finite value to
+  exponentiate, and a large-but-finite $V$ only works if $V\Delta t \ll \pi$
+  — otherwise the phase just wraps around instead of blocking the wave,
+  forcing an artificially tiny $\Delta t$. Setting $\psi=0$ outside the slits
+  directly is an exact, unconditionally stable hard wall at any $\Delta t$.
+- The domain edges need absorption, not oscillation. The standard textbook
+  fix for FFT wraparound is a complex absorbing potential
+  $V \rightarrow V - i\Gamma(x,y)$; under the propagator its only effect is
+  amplitude decay $e^{-\Gamma\Delta t}$. It's simpler to apply that decay
+  directly as a mask than to carry a separate imaginary-potential array
+  through an extra exponential every step just to arrive at the same number.
+
+So $M(x,y)$ is mathematically equivalent to a potential term — infinite at
+the wall, imaginary in the absorbing layers — just applied as a direct
+constraint on $\psi$ rather than an exponentiated $V$, which sidesteps the
+infinity/aliasing problem and skips a redundant exponential each step.
+
 ### What the detection screen records
 
 Rather than reading off a single final-time snapshot, the screen accumulates
