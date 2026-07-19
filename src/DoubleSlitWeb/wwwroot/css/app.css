@@ -726,3 +726,9 @@ input[type="number"] {
 .ds-observe-label {
     color: var(--text-primary);
 }
+
+.btn-active {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+}

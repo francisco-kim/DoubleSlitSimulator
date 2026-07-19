@@ -44,13 +44,12 @@
         <div class="control-group control-buttons">
             <button class="btn btn-primary" @onclick="FireOne">Fire one electron</button>
             <button class="btn" @onclick="FireBurst">Fire @BurstCount</button>
+            <button class="btn @(Runner.AutoFire ? "btn-active" : "")" @onclick="ToggleAutoFire">
+                @(Runner.AutoFire ? "Stop auto-fire" : "Start auto-fire")
+            </button>
         </div>
 
         <div class="control-group">
-            <label class="check-label">
-                <input type="checkbox" checked="@Runner.AutoFire" @onchange="OnAutoFireChanged" />
-                auto-fire
-            </label>
             <label class="control-label">@BurstCount electrons — per burst, or per second on auto-fire</label>
             <input type="range" min="1" max="50" step="1"
                    value="@Runner.FireRatePerSecond"
@@ -119,13 +118,13 @@
 
         <div class="control-group">
             <label class="check-label">
-                <input type="checkbox" checked="@Runner.ShowCurve" @onchange="OnShowCurveChanged" />
-                show intensity curves
+                <input type="checkbox" checked="@Runner.ShowTheoryCurve" @onchange="OnShowTheoryCurveChanged" />
+                show theoretical prediction (dashed)
             </label>
-            <div class="control-hint">
-                Dashed: where quantum mechanics predicts electrons should land.
-                Solid: where yours actually landed.
-            </div>
+            <label class="check-label">
+                <input type="checkbox" checked="@Runner.ShowMeasuredCurve" @onchange="OnShowMeasuredCurveChanged" />
+                show measured data (solid)
+            </label>
         </div>
 
         <div class="control-group control-buttons">
@@ -348,8 +347,8 @@
         }
 
         var theory = Runner.TheoryCurve() ?? Array.Empty<double>();
-        var showTheory = Runner.ShowCurve && theory.Length > 0;
-        var showHistogram = Runner.ShowCurve && Runner.DotCount > 0;
+        var showTheory = Runner.ShowTheoryCurve && theory.Length > 0;
+        var showHistogram = Runner.ShowMeasuredCurve && Runner.DotCount > 0;
 
         // 4-px bins keep the measured curve readable at low electron counts.
         const int binWidth = 4;
@@ -393,13 +392,13 @@
 
     private int BurstCount => (int)Runner.FireRatePerSecond;
 
-    private void FireOne() => Runner.Fire();
+    private void FireOne() => Runner.FireOneVisibly();
 
     private void FireBurst() => Runner.FireMany(BurstCount);
 
     private void Replay() => Runner.Replay();
 
-    private void OnAutoFireChanged(ChangeEventArgs e) => Runner.AutoFire = (bool)e.Value!;
+    private void ToggleAutoFire() => Runner.AutoFire = !Runner.AutoFire;
 
     private void OnObserveChanged(ChangeEventArgs e)
     {
@@ -414,18 +413,17 @@
         UpdateCurves();
     }
 
-    private void OnPersistCloudChanged(ChangeEventArgs e)
+    private void OnPersistCloudChanged(ChangeEventArgs e) => Runner.SetPersistCloud((bool)e.Value!);
+
+    private void OnShowTheoryCurveChanged(ChangeEventArgs e)
     {
-        Runner.PersistCloud = (bool)e.Value!;
-        if (!Runner.PersistCloud && !Runner.IsAnimating)
-        {
-            Runner.ClearCloudDisplay();
-        }
+        Runner.ShowTheoryCurve = (bool)e.Value!;
+        UpdateCurves();
     }
 
-    private void OnShowCurveChanged(ChangeEventArgs e)
+    private void OnShowMeasuredCurveChanged(ChangeEventArgs e)
     {
-        Runner.ShowCurve = (bool)e.Value!;
+        Runner.ShowMeasuredCurve = (bool)e.Value!;
         UpdateCurves();
     }
 

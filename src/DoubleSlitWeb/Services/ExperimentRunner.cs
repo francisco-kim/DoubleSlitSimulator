@@ -53,7 +53,11 @@ public sealed class ExperimentRunner
     /// <summary>Wave-animation speed multiplier (steps per frame scale).</summary>
     public double WaveSpeed { get; set; } = 1.0;
 
-    public bool ShowCurve { get; set; } = true;
+    /// <summary>Show the dashed quantum-mechanical / classical prediction curve.</summary>
+    public bool ShowTheoryCurve { get; set; } = true;
+
+    /// <summary>Show the solid measured-histogram curve of actual impacts.</summary>
+    public bool ShowMeasuredCurve { get; set; } = true;
 
     /// <summary>Keep the time-averaged wave visible after a run completes.</summary>
     public bool PersistCloud { get; set; } = true;
@@ -62,7 +66,7 @@ public sealed class ExperimentRunner
     ///     Purely cosmetic: draw an imagined particle path through one slit for
     ///     unobserved shots. Nothing measures the slit — physics unchanged.
     /// </summary>
-    public bool ShowImaginedPath { get; set; }
+    public bool ShowImaginedPath { get; set; } = true;
 
     public bool IsAnimating { get; private set; }
 
@@ -105,12 +109,17 @@ public sealed class ExperimentRunner
         WaveDirty = true;
     }
 
+    /// <summary>
+    ///     Fires one electron from auto-fire's schedule: reuses the cached wave
+    ///     distribution whenever possible so the rate is not throttled by
+    ///     replaying the animation on every shot.
+    /// </summary>
     public void Fire() => FireMany(1);
 
     /// <summary>
-    ///     Fires several electrons in one burst. Unobserved shots need the
-    ///     cached wave distribution; if missing, the wave animation runs first
-    ///     and the whole burst lands when it completes.
+    ///     Fires several electrons in one burst (or auto-fire's schedule).
+    ///     Unobserved shots need the cached wave distribution; if missing, the
+    ///     wave animation runs first and the whole burst lands when it completes.
     /// </summary>
     public void FireMany(int count)
     {
@@ -136,6 +145,22 @@ public sealed class ExperimentRunner
         }
     }
 
+    /// <summary>
+    ///     The explicit "Fire one electron" button: unlike <see cref="Fire" />,
+    ///     this always replays the wave animation (even once cached) so a single
+    ///     manual shot is never silent — the whole point of firing "just one".
+    /// </summary>
+    public void FireOneVisibly()
+    {
+        if (Observe)
+        {
+            EmitObserved();
+            return;
+        }
+
+        StartAnimation(pendingShots: 1);
+    }
+
     /// <summary>Replays the wave animation (interference mode only).</summary>
     public void Replay()
     {
@@ -154,10 +179,23 @@ public sealed class ExperimentRunner
         WaveDirty = true;
     }
 
-    /// <summary>Hides the persisted wave cloud (used when persistence is turned off).</summary>
-    public void ClearCloudDisplay()
+    /// <summary>
+    ///     Applies the "keep wave visible" toggle. While a run is in progress
+    ///     the live animation already shows regardless, so this only affects
+    ///     display once the run has completed: turning it off hides the cloud
+    ///     immediately, and turning it back on re-reveals the last completed
+    ///     run's accumulated cloud (still held in <see cref="Cloud" />) without
+    ///     needing to re-run anything.
+    /// </summary>
+    public void SetPersistCloud(bool value)
     {
-        HasCloud = false;
+        PersistCloud = value;
+        if (IsAnimating)
+        {
+            return;
+        }
+
+        HasCloud = value && _both is not null;
         WaveDirty = true;
     }
 
