@@ -243,6 +243,13 @@ public sealed class ExperimentRunner
 
     private void TickAnimation(double budgetMilliseconds)
     {
+        // WaveSpeed must control how many steps run per frame; a per-frame wall
+        // -clock budget close to a single step's cost (as under WASM) would
+        // silently cap every speed setting at ~1 step/frame. So targetSteps is
+        // always run in full — budgetMilliseconds only guards against a
+        // pathological stall (e.g. a slow first JIT frame), at a much larger
+        // multiple of the normal per-frame cost.
+        const double SafetyCapMultiplier = 25.0;
         var stopwatch = Stopwatch.StartNew();
         var targetSteps = Math.Max(1, (int)Math.Round(2.0 * WaveSpeed));
         for (var i = 0; i < targetSteps; i++)
@@ -253,7 +260,7 @@ public sealed class ExperimentRunner
             }
 
             AccumulateCloud();
-            if (stopwatch.Elapsed.TotalMilliseconds > budgetMilliseconds)
+            if (stopwatch.Elapsed.TotalMilliseconds > budgetMilliseconds * SafetyCapMultiplier)
             {
                 break;
             }

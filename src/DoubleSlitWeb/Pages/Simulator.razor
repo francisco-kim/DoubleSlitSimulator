@@ -63,8 +63,9 @@
                 <strong>Observe which slit it goes through</strong>
             </label>
             <div class="control-hint">
-                Places a detector at the slits. Each electron is then seen at one
-                slit — watch what that does to the pattern.
+                Places a detector at each slit — both must be watched, since any
+                electron could take either one. Each electron is then seen at
+                one slit — watch what that does to the pattern.
             </div>
         </div>
 
@@ -93,7 +94,7 @@
             </div>
             <label class="check-label">
                 <input type="checkbox" checked="@Runner.PersistCloud" @onchange="OnPersistCloudChanged" />
-                keep wave visible after each run
+                show wave pattern
             </label>
             @if (Runner.Observe)
             {
@@ -312,19 +313,39 @@
         // may draw a purely cosmetic "imagined" path through a random slit.
         var imagined = !shot.Observed && Runner.ShowImaginedPath;
         var showPath = shot.Observed || imagined;
-        var slitX = shot.Slit switch
+
+        // The gun's spatial width (σₓ = 64) already spans both slits while its
+        // angular spread is tiny — so a measured electron's transverse position
+        // is essentially constant from gun to screen. A straight vertical line
+        // at x = impact position is the physically faithful classical path
+        // (not a bent gun→slit→screen line): it already threads the slit it
+        // was seen at, with no need to move the drawn gun icon. The unphysical
+        // "imagined" overlay keeps the bent path since its impact point can
+        // land anywhere in the interference pattern, not just behind a slit.
+        double launchX;
+        double slitX;
+        if (shot.Observed)
         {
-            DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
-            DoubleSlitPhysics.Models.SlitMode.RightOnly => geometry.RightSlitCentre,
-            _ => _rng.Next(2) == 0 ? geometry.LeftSlitCentre : geometry.RightSlitCentre,
-        };
+            launchX = shot.ImpactX;
+            slitX = shot.ImpactX;
+        }
+        else
+        {
+            launchX = geometry.PacketX;
+            slitX = shot.Slit switch
+            {
+                DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
+                DoubleSlitPhysics.Models.SlitMode.RightOnly => geometry.RightSlitCentre,
+                _ => _rng.Next(2) == 0 ? geometry.LeftSlitCentre : geometry.RightSlitCentre,
+            };
+        }
 
         var json = System.Text.Json.JsonSerializer.Serialize(new
         {
             overlayId = "ds-flight",
             dotsId = "ds-dots",
             fxId = "ds-fx",
-            gunX = geometry.PacketX,
+            gunX = launchX,
             gunY = geometry.PacketY,
             slitX,
             barrierY = geometry.BarrierY,
