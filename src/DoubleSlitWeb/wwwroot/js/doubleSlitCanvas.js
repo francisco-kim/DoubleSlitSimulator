@@ -121,7 +121,7 @@ let animatorRunning = false;
 
 export function animateElectron(shotJson) {
   const shot = JSON.parse(shotJson);
-  electrons.push({ ...shot, start: performance.now() });
+  electrons.push({ ...shot, start: performance.now() + (shot.delay || 0) });
   ensureAnimator();
 }
 
@@ -151,6 +151,9 @@ function tickAnimations(now) {
   for (let i = electrons.length - 1; i >= 0; i--) {
     const e = electrons[i];
     const t = (now - e.start) / e.duration;
+    if (t < 0) {
+      continue;   // staggered launch not due yet
+    }
     if (t >= 1) {
       stampDot(e, accent);
       electrons.splice(i, 1);
@@ -199,8 +202,8 @@ function drawElectron(e, t, accent) {
   }
   const ctx = state.ctx;
 
-  if (!e.observed) {
-    // Unobserved: no trajectory exists — just a launch flash at the gun.
+  if (!e.showPath) {
+    // No trajectory to draw — just a launch flash at the gun.
     if (t < 0.35) {
       const ft = t / 0.35;
       ctx.strokeStyle = accent;
@@ -214,7 +217,8 @@ function drawElectron(e, t, accent) {
     return;
   }
 
-  // Observed: a definite particle path gun → measured slit → impact point.
+  // Particle path gun → slit → impact point. Real for a which-path
+  // measurement; drawn fainter when it is only an imagined path.
   let x;
   let y;
   if (t < 0.5) {
@@ -231,9 +235,11 @@ function drawElectron(e, t, accent) {
   gradient.addColorStop(0, accent);
   gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
   ctx.fillStyle = gradient;
+  ctx.globalAlpha = e.ghost ? 0.45 : 1;
   ctx.beginPath();
   ctx.arc(x, y, 6, 0, 2 * Math.PI);
   ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 function stampDot(e, accent) {

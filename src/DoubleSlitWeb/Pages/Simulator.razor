@@ -43,6 +43,7 @@
     <aside class="controls">
         <div class="control-group control-buttons">
             <button class="btn btn-primary" @onclick="FireOne">Fire one electron</button>
+            <button class="btn" @onclick="FireBurst">Fire @BurstCount</button>
         </div>
 
         <div class="control-group">
@@ -50,11 +51,11 @@
                 <input type="checkbox" checked="@Runner.AutoFire" @onchange="OnAutoFireChanged" />
                 auto-fire
             </label>
-            <label class="control-label">Rate: @Runner.FireRatePerSecond.ToString("0") electrons/s</label>
+            <label class="control-label">@BurstCount electrons — per burst, or per second on auto-fire</label>
             <input type="range" min="1" max="50" step="1"
                    value="@Runner.FireRatePerSecond"
                    @oninput="@(e => Runner.FireRatePerSecond = double.Parse((string)e.Value!))" />
-            <div class="slider-scale"><span>1/s — one at a time</span><span>50/s</span></div>
+            <div class="slider-scale"><span>1 — one at a time</span><span>50</span></div>
         </div>
 
         <div class="control-group ds-observe">
@@ -89,12 +90,31 @@
                     <option value="2">2×</option>
                     <option value="4">4× (fast)</option>
                 </select>
-                <button class="btn" @onclick="Replay" disabled="@Runner.IsAnimating">Replay wave</button>
+                <button class="btn" @onclick="Replay" disabled="@(Runner.IsAnimating || Runner.Observe)">Replay wave</button>
             </div>
             <label class="check-label">
                 <input type="checkbox" checked="@Runner.PersistCloud" @onchange="OnPersistCloudChanged" />
                 keep wave visible after each run
             </label>
+            @if (Runner.Observe)
+            {
+                <div class="control-hint">
+                    No wave while observing: each electron is measured at a slit,
+                    so there is nothing wave-like left to show.
+                </div>
+            }
+            else
+            {
+                <label class="check-label">
+                    <input type="checkbox" checked="@Runner.ShowImaginedPath" @onchange="@(e => Runner.ShowImaginedPath = (bool)e.Value!)" />
+                    overlay an imagined particle path
+                </label>
+                <div class="control-hint">
+                    Just an animation — nothing here measures which slit the
+                    electron takes, so the interference physics is unchanged.
+                    Only the “Observe” switch above does that.
+                </div>
+            }
         </div>
 
         <div class="control-group">
@@ -237,9 +257,12 @@
 
         if (Runner.ShotsToAnimate.Count > 0)
         {
-            foreach (var shot in Runner.ShotsToAnimate)
+            // Bursts stagger their launches so electrons visibly arrive one by
+            // one instead of as a single flash.
+            var stagger = Math.Min(60, 2000 / Runner.ShotsToAnimate.Count);
+            for (var i = 0; i < Runner.ShotsToAnimate.Count; i++)
             {
-                LaunchShotAnimation(shot);
+                LaunchShotAnimation(Runner.ShotsToAnimate[i], delayMs: i * stagger);
             }
 
             Runner.ShotsToAnimate.Clear();
@@ -282,14 +305,19 @@
         }
     }
 
-    private void LaunchShotAnimation(ElectronShot shot)
+    private void LaunchShotAnimation(ElectronShot shot, double delayMs)
     {
         var geometry = Runner.Geometry;
+
+        // Real which-path shots draw the measured trajectory; unobserved shots
+        // may draw a purely cosmetic "imagined" path through a random slit.
+        var imagined = !shot.Observed && Runner.ShowImaginedPath;
+        var showPath = shot.Observed || imagined;
         var slitX = shot.Slit switch
         {
             DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
             DoubleSlitPhysics.Models.SlitMode.RightOnly => geometry.RightSlitCentre,
-            _ => geometry.PacketX,
+            _ => _rng.Next(2) == 0 ? geometry.LeftSlitCentre : geometry.RightSlitCentre,
         };
 
         var json = System.Text.Json.JsonSerializer.Serialize(new
@@ -304,8 +332,10 @@
             screenY = geometry.ScreenY,
             impactX = shot.ImpactX,
             dotX = shot.ImpactX,
-            observed = shot.Observed,
-            duration = shot.Observed ? 700 : 550,
+            showPath,
+            ghost = imagined,
+            delay = delayMs,
+            duration = showPath ? 700 : 550,
         });
         Interop.CanvasInterop.AnimateElectron(json);
     }
@@ -361,7 +391,11 @@
         Interop.CanvasInterop.DrawScene("ds-scene", json);
     }
 
+    private int BurstCount => (int)Runner.FireRatePerSecond;
+
     private void FireOne() => Runner.Fire();
+
+    private void FireBurst() => Runner.FireMany(BurstCount);
 
     private void Replay() => Runner.Replay();
 
@@ -370,6 +404,12 @@
     private void OnObserveChanged(ChangeEventArgs e)
     {
         Runner.Observe = (bool)e.Value!;
+        if (Runner.Observe)
+        {
+            // Which-path measurement: no wave picture exists to display.
+            Runner.CancelWave();
+        }
+
         DrawScene();
         UpdateCurves();
     }
