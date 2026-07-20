@@ -6,15 +6,8 @@ using DoubleSlitPhysics.Services;
 
 namespace DoubleSlitWeb.Services;
 
-/// <summary>
-///     One electron impact the UI still has to animate. <see cref="SpreadLaunch" />
-///     marks shots fired via burst/auto-fire (as opposed to the single "fire one
-///     electron with wave animation" button): their unobserved flight/flash
-///     launches from a random point across the gun's actual width instead of
-///     dead centre, matching the real (already-wide) source and avoiding many
-///     electrons visually stacking on the exact same pixel.
-/// </summary>
-public readonly record struct ElectronShot(double ImpactX, SlitMode Slit, bool Observed, bool SpreadLaunch);
+/// <summary>One electron impact the UI still has to animate.</summary>
+public readonly record struct ElectronShot(double ImpactX, SlitMode Slit, bool Observed);
 
 /// <summary>
 ///     UI-side state machine driving the double-slit experiment.
@@ -57,7 +50,6 @@ public sealed class ExperimentRunner
     private double[]? _classicalTheory;
     private double _fireAccumulator;
     private int _pendingShotsAfterAnimation;
-    private bool _pendingSpreadLaunch;
 
     public ExperimentRunner()
     {
@@ -88,12 +80,6 @@ public sealed class ExperimentRunner
 
     /// <summary>Keep the time-averaged wave visible after a run completes.</summary>
     public bool PersistCloud { get; set; } = true;
-
-    /// <summary>
-    ///     Purely cosmetic: draw an imagined particle path through one slit for
-    ///     unobserved shots. Nothing measures the slit — physics unchanged.
-    /// </summary>
-    public bool ShowImaginedPath { get; set; } = true;
 
     public bool IsAnimating { get; private set; }
 
@@ -139,7 +125,6 @@ public sealed class ExperimentRunner
         _classicalTheory = null;
         IsAnimating = false;
         _pendingShotsAfterAnimation = 0;
-        _pendingSpreadLaunch = false;
         HasCloud = false;
         Array.Clear(Cloud);
         WaveDirty = true;
@@ -166,9 +151,15 @@ public sealed class ExperimentRunner
             // solo shot; use the configured rate instead so scaling reflects
             // how busy the screen actually gets.
             var effectiveBatch = AutoFire ? Math.Max(count, (int)FireRatePerSecond) : count;
+
+            // A manual single-electron burst (button, not auto-fire) should
+            // show just that one electron threading a slit — the spurious
+            // wall hits are there to convey a busy source, which a lone shot
+            // isn't.
+            var showBlocked = AutoFire || count > 1;
             for (var i = 0; i < count; i++)
             {
-                EmitObserved(effectiveBatch);
+                EmitObserved(effectiveBatch, showBlocked);
             }
 
             return;
@@ -176,13 +167,13 @@ public sealed class ExperimentRunner
 
         if (_both is null)
         {
-            StartAnimation(pendingShots: count, spreadLaunch: true);
+            StartAnimation(pendingShots: count);
             return;
         }
 
         for (var i = 0; i < count; i++)
         {
-            EmitInterference(spreadLaunch: true);
+            EmitInterference();
         }
     }
 
@@ -190,19 +181,16 @@ public sealed class ExperimentRunner
     ///     The explicit "Fire one electron" button: unlike <see cref="Fire" />,
     ///     this always replays the wave animation (even once cached) so a single
     ///     manual shot is never silent — the whole point of firing "just one".
-    ///     Its flash/path always launches from dead centre (not spread across
-    ///     the width like burst/auto-fire), matching the real wave it just
-    ///     showed emanating from the gun icon.
     /// </summary>
     public void FireOneVisibly()
     {
         if (Observe)
         {
-            EmitObserved(batchSize: 1);
+            EmitObserved(batchSize: 1, showBlocked: false);
             return;
         }
 
-        StartAnimation(pendingShots: 1, spreadLaunch: false);
+        StartAnimation(pendingShots: 1);
     }
 
     /// <summary>Replays the wave animation (interference mode only).</summary>
@@ -210,7 +198,7 @@ public sealed class ExperimentRunner
     {
         if (!Observe)
         {
-            StartAnimation(pendingShots: 0, spreadLaunch: false);
+            StartAnimation(pendingShots: 0);
         }
     }
 
@@ -219,7 +207,6 @@ public sealed class ExperimentRunner
     {
         IsAnimating = false;
         _pendingShotsAfterAnimation = 0;
-        _pendingSpreadLaunch = false;
         HasCloud = false;
         WaveDirty = true;
     }
@@ -323,36 +310,33 @@ public sealed class ExperimentRunner
         HasCloud = PersistCloud;
 
         var pending = _pendingShotsAfterAnimation;
-        var spreadLaunch = _pendingSpreadLaunch;
         _pendingShotsAfterAnimation = 0;
         for (var i = 0; i < pending; i++)
         {
-            EmitInterference(spreadLaunch);
+            EmitInterference();
         }
     }
 
-    private void StartAnimation(int pendingShots, bool spreadLaunch)
+    private void StartAnimation(int pendingShots)
     {
         if (IsAnimating)
         {
             _pendingShotsAfterAnimation += pendingShots;
-            _pendingSpreadLaunch |= spreadLaunch;
             return;
         }
 
         _experiment.Reset(SlitMode.Both);
         IsAnimating = true;
         _pendingShotsAfterAnimation = pendingShots;
-        _pendingSpreadLaunch = spreadLaunch;
         HasCloud = false;
         Array.Clear(Cloud);
         WaveDirty = true;
     }
 
-    private void EmitInterference(bool spreadLaunch) =>
-        RecordShot(_both!.Sample(_rng), SlitMode.Both, spreadLaunch);
+    private void EmitInterference() =>
+        RecordShot(_both!.Sample(_rng), SlitMode.Both);
 
-    private void EmitObserved(int batchSize)
+    private void EmitObserved(int batchSize, bool showBlocked = true)
     {
         var mode = _rng.Next(2) == 0 ? SlitMode.LeftOnly : SlitMode.RightOnly;
         var centre = mode is SlitMode.LeftOnly ? Geometry.LeftSlitCentre : Geometry.RightSlitCentre;
@@ -364,15 +348,20 @@ public sealed class ExperimentRunner
             + (_rng.NextDouble() - 0.5) * Geometry.SlitWidth
             + SampleStandardNormal() * ClassicalBlurSigma;
 
-        // Observed shots always launch from their own impact column (see
-        // Simulator.razor), so the spread-launch flag is unused here.
-        RecordShot(Math.Clamp(x, 0.0, Geometry.Width - 1.0), mode, spreadLaunch: false);
+        RecordShot(Math.Clamp(x, 0.0, Geometry.Width - 1.0), mode);
+
+        if (!showBlocked)
+        {
+            return;
+        }
 
         // Most of the wide source actually hits the solid wall, not a slit —
         // show a few of those undetected electrons too, sampled across the
-        // gun's real width. Below one expected companion, resolve the
-        // fraction as a probability so blocked electrons still appear now and
-        // then instead of vanishing entirely at high firing rates.
+        // gun's real width (clamped to the source's ±2σ extent, not the whole
+        // grid — the source is wide, not literally wall-to-wall). Below one
+        // expected companion, resolve the fraction as a probability so
+        // blocked electrons still appear now and then instead of vanishing
+        // entirely at high firing rates.
         var expectedBlocked = ExpectedBlockedElectronsFor(batchSize);
         var blockedCount = (int)expectedBlocked;
         if (_rng.NextDouble() < expectedBlocked - blockedCount)
@@ -380,9 +369,12 @@ public sealed class ExperimentRunner
             blockedCount++;
         }
 
+        var half = Geometry.SourceHalfWidth;
         for (var i = 0; i < blockedCount; i++)
         {
-            var blockedX = PushOutsideSlits(Geometry.PacketX + SampleStandardNormal() * Geometry.SigmaX);
+            var sampled = Geometry.PacketX + SampleStandardNormal() * Geometry.SigmaX;
+            var bounded = Math.Clamp(sampled, Geometry.PacketX - half, Geometry.PacketX + half);
+            var blockedX = PushOutsideSlits(bounded);
             BlockedLaunchXs.Add(Math.Clamp(blockedX, 0.0, Geometry.Width - 1.0));
         }
     }
@@ -406,7 +398,7 @@ public sealed class ExperimentRunner
         return x;
     }
 
-    private void RecordShot(double x, SlitMode mode, bool spreadLaunch)
+    private void RecordShot(double x, SlitMode mode)
     {
         DotCount++;
         Histogram[Math.Clamp((int)x, 0, Histogram.Length - 1)]++;
@@ -419,7 +411,7 @@ public sealed class ExperimentRunner
             RightSlitCount++;
         }
 
-        ShotsToAnimate.Add(new ElectronShot(x, mode, Observe, spreadLaunch));
+        ShotsToAnimate.Add(new ElectronShot(x, mode, Observe));
     }
 
     private double[] BuildClassicalTheory()

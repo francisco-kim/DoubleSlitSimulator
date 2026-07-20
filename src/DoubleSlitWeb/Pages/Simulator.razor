@@ -103,18 +103,6 @@
                     so there is nothing wave-like left to show.
                 </div>
             }
-            else
-            {
-                <label class="check-label">
-                    <input type="checkbox" checked="@Runner.ShowImaginedPath" @onchange="@(e => Runner.ShowImaginedPath = (bool)e.Value!)" />
-                    overlay an imagined particle path
-                </label>
-                <div class="control-hint">
-                    Just an animation — nothing here measures which slit the
-                    electron takes, so the interference physics is unchanged.
-                    Only the “Observe” switch above does that.
-                </div>
-            }
         </div>
 
         <div class="control-group">
@@ -320,19 +308,16 @@
     {
         var geometry = Runner.Geometry;
 
-        // Real which-path shots draw the measured trajectory; unobserved shots
-        // may draw a purely cosmetic "imagined" path through a random slit.
-        var imagined = !shot.Observed && Runner.ShowImaginedPath;
-        var showPath = shot.Observed || imagined;
-
-        // The gun's spatial width (σₓ = 64) already spans both slits while its
-        // angular spread is tiny — so a measured electron's transverse position
-        // is essentially constant from gun to screen. A straight vertical line
-        // at x = impact position is the physically faithful classical path
-        // (not a bent gun→slit→screen line): it already threads the slit it
-        // was seen at, with no need to move the drawn gun icon. The unphysical
-        // "imagined" overlay keeps the bent path since its impact point can
-        // land anywhere in the interference pattern, not just behind a slit.
+        // Observed shots draw the measured classical trajectory. The gun's
+        // spatial width (σₓ = 64) already spans both slits while its angular
+        // spread is tiny — so a measured electron's transverse position is
+        // essentially constant from gun to screen. A straight vertical line
+        // at x = impact position is the physically faithful classical path:
+        // it already threads the slit it was seen at, with no need to move
+        // the drawn gun icon. Unobserved shots have no real path at all — the
+        // wave picture already is the honest illustration — so they only get
+        // a flash, launched from the gun's centre.
+        var showPath = shot.Observed;
         double launchX;
         double slitX;
         if (shot.Observed)
@@ -342,15 +327,7 @@
         }
         else
         {
-            // Burst/auto-fire shots launch from a random point across the
-            // gun's actual width (it's a wide source, not a pinpoint emitter —
-            // see the "point source" discussion) instead of dead centre, so
-            // rapid-fire electrons don't all visually stack on one pixel. The
-            // single "fire one electron" button keeps the centred launch that
-            // matches the real wave it just displayed.
-            launchX = shot.SpreadLaunch
-                ? Math.Clamp(geometry.PacketX + SampleStandardNormal() * geometry.SigmaX, 24, geometry.Width - 24)
-                : geometry.PacketX;
+            launchX = geometry.PacketX;
             slitX = shot.Slit switch
             {
                 DoubleSlitPhysics.Models.SlitMode.LeftOnly => geometry.LeftSlitCentre,
@@ -372,7 +349,7 @@
             impactX = shot.ImpactX,
             dotX = shot.ImpactX,
             showPath,
-            ghost = imagined,
+            sourceHalfWidth = geometry.SourceHalfWidth,
             blocked = false,
             delay = delayMs,
             duration = showPath ? 700 : 550,
@@ -401,7 +378,6 @@
             impactX = x,
             dotX = x,
             showPath = true,
-            ghost = false,
             blocked = true,
             delay = delayMs,
             duration = 350,
@@ -449,6 +425,7 @@
         {
             gunX = geometry.PacketX,
             gunY = geometry.PacketY,
+            sourceHalfWidth = geometry.SourceHalfWidth,
             barrierY = geometry.BarrierY,
             barrierThickness = geometry.BarrierThickness,
             slitWidth = geometry.SlitWidth,
@@ -458,14 +435,6 @@
             observed = Runner.Observe,
         });
         Interop.CanvasInterop.DrawScene("ds-scene", json);
-    }
-
-    private double SampleStandardNormal()
-    {
-        // Box–Muller.
-        var u = 1.0 - _rng.NextDouble();
-        var v = _rng.NextDouble();
-        return Math.Sqrt(-2.0 * Math.Log(u)) * Math.Cos(2.0 * Math.PI * v);
     }
 
     private int BurstCount => (int)Runner.FireRatePerSecond;

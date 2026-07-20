@@ -56,13 +56,30 @@ export function drawScene(id, geometryJson) {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Electron gun: a small emitter pointing down at (gunX, gunY).
+  // Electron gun: not a pinpoint emitter — the real source is a wide
+  // Gaussian (σₓ) spanning much of the grid, so draw a soft bar fading to
+  // nothing at ±sourceHalfWidth instead of implying a point, plus a small
+  // solid pointer at its centre so it still reads as "the gun".
+  const barLeft = Math.max(0, g.gunX - g.sourceHalfWidth);
+  const barRight = Math.min(w, g.gunX + g.sourceHalfWidth);
+  // Flat-topped, not peaked: a triangular fade reads as "invisible" well
+  // before the true ±sourceHalfWidth edge, so electrons sampled out near
+  // that edge would look like they spawn outside the bar. A plateau keeps
+  // almost the whole declared width visibly solid.
+  const gradient = ctx.createLinearGradient(barLeft, 0, barRight, 0);
+  gradient.addColorStop(0, 'transparent');
+  gradient.addColorStop(0.12, ink);
+  gradient.addColorStop(0.88, ink);
+  gradient.addColorStop(1, 'transparent');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(barLeft, g.gunY - 14, barRight - barLeft, 10);
+
   ctx.fillStyle = ink;
   ctx.beginPath();
-  ctx.moveTo(g.gunX - 10, g.gunY - 16);
-  ctx.lineTo(g.gunX + 10, g.gunY - 16);
-  ctx.lineTo(g.gunX + 4, g.gunY - 2);
-  ctx.lineTo(g.gunX - 4, g.gunY - 2);
+  ctx.moveTo(g.gunX - 6, g.gunY - 16);
+  ctx.lineTo(g.gunX + 6, g.gunY - 16);
+  ctx.lineTo(g.gunX + 3, g.gunY - 4);
+  ctx.lineTo(g.gunX - 3, g.gunY - 4);
   ctx.closePath();
   ctx.fill();
 
@@ -226,22 +243,22 @@ function drawElectron(e, t, accent) {
   }
 
   if (!e.showPath) {
-    // No trajectory to draw — just a launch flash at the gun.
+    // No trajectory to draw. The source is a wide gun, not a point, so
+    // flash its actual width (matching the drawn gun bar) rather than one
+    // pixel — and not the whole canvas, which is wider than the source.
     if (t < 0.35) {
       const ft = t / 0.35;
-      ctx.strokeStyle = accent;
-      ctx.globalAlpha = 1 - ft;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(e.gunX, e.gunY, 2 + 10 * ft, 0, 2 * Math.PI);
-      ctx.stroke();
+      const left = Math.max(0, e.gunX - e.sourceHalfWidth);
+      const right = Math.min(ctx.canvas.width, e.gunX + e.sourceHalfWidth);
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.35 * (1 - ft);
+      ctx.fillRect(left, e.gunY - 6, right - left, 12);
       ctx.globalAlpha = 1;
     }
     return;
   }
 
-  // Particle path gun → slit → impact point. Real for a which-path
-  // measurement; drawn fainter when it is only an imagined path.
+  // Real which-path measurement: particle path gun → slit → impact point.
   let x;
   let y;
   if (t < 0.5) {
@@ -258,11 +275,9 @@ function drawElectron(e, t, accent) {
   gradient.addColorStop(0, accent);
   gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
   ctx.fillStyle = gradient;
-  ctx.globalAlpha = e.ghost ? 0.45 : 1;
   ctx.beginPath();
   ctx.arc(x, y, 6, 0, 2 * Math.PI);
   ctx.fill();
-  ctx.globalAlpha = 1;
 }
 
 function stampDot(e, accent) {

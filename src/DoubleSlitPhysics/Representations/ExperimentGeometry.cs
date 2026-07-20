@@ -27,6 +27,12 @@ public sealed record ExperimentGeometry
     /// <summary>Transverse std dev of |ψ|²; must illuminate both slits.</summary>
     public double SigmaX { get; init; } = 64.0;
 
+    /// <summary>
+    ///     Practical half-width of the source for illustration purposes (blocked
+    ///     -electron sampling, gun icon width): ±2σ, ~95% of the Gaussian's mass.
+    /// </summary>
+    public double SourceHalfWidth => 2.0 * SigmaX;
+
     /// <summary>Longitudinal std dev of |ψ|²; large ⇒ quasi-monochromatic.</summary>
     public double SigmaY { get; init; } = 16.0;
 

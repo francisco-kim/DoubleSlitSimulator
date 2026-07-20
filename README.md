@@ -190,6 +190,8 @@ tests/DoubleSlitPhysics.Tests xUnit physics sanity tests (FFT identities, norm
 dotnet test                                # physics sanity tests
 dotnet run --project src/DoubleSlitWeb    # local dev server (slow, interpreted)
 dotnet publish src/DoubleSlitWeb -c Release -p:EnableAot=true -o publish
+python3 -m http.server -d publish/wwwroot 8080   # serve the published build, then open localhost:8080
+rm -rf publish/                            # publish/ is gitignored, safe to delete
 ```
 
 The development server runs the .NET IL interpreter and is an order of
