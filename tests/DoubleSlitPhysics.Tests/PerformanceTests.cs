@@ -40,7 +40,10 @@ public class PerformanceTests
         _output.WriteLine($"{msPerStep:F2} ms per split-step on a 512×256 grid (native).");
 
         // Native should be far faster than the WASM budget; this is an early
-        // warning only, not a strict performance contract.
-        Assert.True(msPerStep < 50.0, $"Suspiciously slow: {msPerStep:F1} ms/step.");
+        // warning only, not a strict performance contract. Threshold has
+        // generous headroom for slower/noisier CI runners (observed ~15ms
+        // locally, ~53ms on GitHub Actions' shared runners) — it should only
+        // trip on an actual multi-x regression, not ordinary machine variance.
+        Assert.True(msPerStep < 150.0, $"Suspiciously slow: {msPerStep:F1} ms/step.");
     }
 }
