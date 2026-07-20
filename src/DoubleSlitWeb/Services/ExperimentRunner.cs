@@ -73,7 +73,7 @@ public sealed class ExperimentRunner
     public double WaveSpeed { get; set; } = 1.0;
 
     /// <summary>Show the dashed quantum-mechanical / classical prediction curve.</summary>
-    public bool ShowTheoryCurve { get; set; }
+    public bool ShowTheoryCurve { get; set; } = true;
 
     /// <summary>Show the solid measured-histogram curve of actual impacts.</summary>
     public bool ShowMeasuredCurve { get; set; }
