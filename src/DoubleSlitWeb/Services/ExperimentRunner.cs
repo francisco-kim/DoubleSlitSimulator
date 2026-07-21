@@ -81,6 +81,9 @@ public sealed class ExperimentRunner
     /// <summary>Keep the time-averaged wave visible after a run completes.</summary>
     public bool PersistCloud { get; set; } = true;
 
+    /// <summary>Show the accumulated per-electron stripes on the detection screen.</summary>
+    public bool ShowStripes { get; set; } = true;
+
     public bool IsAnimating { get; private set; }
 
     public WaveFunction Psi => _experiment.Psi;

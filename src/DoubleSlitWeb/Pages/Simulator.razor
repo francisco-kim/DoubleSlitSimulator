@@ -21,7 +21,7 @@
         <section class="lattice-panel">
             <div class="panel-caption">Detection screen — seen from the front, one stripe per electron</div>
             <div class="canvas-stack ds-screenview">
-                <canvas id="ds-dots" class="ds-canvas"></canvas>
+                <canvas id="ds-dots" class="ds-canvas" style="@(Runner.ShowStripes ? "" : "visibility:hidden")"></canvas>
                 <canvas id="ds-fx" class="ds-canvas ds-canvas-layer"></canvas>
                 <canvas id="ds-curve" class="ds-canvas ds-canvas-layer"></canvas>
             </div>
@@ -113,6 +113,10 @@
             <label class="check-label">
                 <input type="checkbox" checked="@Runner.ShowMeasuredCurve" @onchange="OnShowMeasuredCurveChanged" />
                 show measured data (solid)
+            </label>
+            <label class="check-label">
+                <input type="checkbox" checked="@(!Runner.ShowStripes)" @onchange="OnHideStripesChanged" />
+                hide stripes
             </label>
         </div>
 
@@ -472,6 +476,11 @@
     {
         Runner.ShowMeasuredCurve = (bool)e.Value!;
         UpdateCurves();
+    }
+
+    private void OnHideStripesChanged(ChangeEventArgs e)
+    {
+        Runner.ShowStripes = !(bool)e.Value!;
     }
 
     private void OnSlitSeparationChanged(ChangeEventArgs e)
